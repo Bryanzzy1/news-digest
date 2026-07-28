@@ -310,7 +310,16 @@ def send(subject, html_body):
 
 
 # ------------------------------- main --------------------------------------
+def preflight():
+    """Print which env secrets arrived (lengths only, never values)."""
+    print("env check (length, 0 = missing/empty):")
+    for name in ("OPENAI_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD", "MAIL_TO"):
+        v = os.environ.get(name, "")
+        print(f"  {name}: len={len(v.strip())}")
+
+
 def main():
+    preflight()
     slot = os.environ.get("DIGEST_SLOT", "morning")
     now_et = datetime.now(ET_ZONE)
     start_utc, end_utc = compute_window(slot, now_et)
