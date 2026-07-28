@@ -1,0 +1,15 @@
+# One RSS/Atom feed URL per line. Blank lines and #comments ignored.
+# AI / agents / ML
+https://openai.com/news/rss.xml
+https://deepmind.google/blog/rss.xml
+https://huggingface.co/blog/feed.xml
+https://bair.berkeley.edu/blog/feed.xml
+https://www.marktechpost.com/feed/
+https://venturebeat.com/category/ai/feed/
+# Broad tech (heavily AI-weighted by the ranker)
+https://techcrunch.com/feed/
+https://www.theverge.com/rss/index.xml
+https://arstechnica.com/feed/
+https://feeds.arstechnica.com/arstechnica/technology-lab
+https://www.wired.com/feed/category/business/latest/rss
+https://hnrss.org/frontpage?points=150

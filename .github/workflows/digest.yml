@@ -1,0 +1,59 @@
+name: news-digest
+
+# Cron is UTC. We fire at both EST and EDT offsets for 9AM and 5PM ET,
+# then a guard step checks the REAL Eastern hour so only the right run
+# proceeds. This makes daylight-saving fully automatic.
+on:
+  schedule:
+    - cron: "0 13 * * *"   # 9AM EDT (summer)
+    - cron: "0 14 * * *"   # 9AM EST (winter)
+    - cron: "0 21 * * *"   # 5PM EDT (summer)
+    - cron: "0 22 * * *"   # 5PM EST (winter)
+  workflow_dispatch:        # manual test button
+    inputs:
+      slot:
+        description: "Force slot for a manual test"
+        type: choice
+        options: [morning, afternoon]
+        default: morning
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Eastern hour and slot
+        id: slot
+        run: |
+          HOUR=$(TZ=America/New_York date +%H)
+          echo "Eastern hour: $HOUR"
+          if [ -n "${{ github.event.inputs.slot }}" ]; then
+            echo "slot=${{ github.event.inputs.slot }}" >> "$GITHUB_OUTPUT"
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          elif [ "$HOUR" = "09" ]; then
+            echo "slot=morning"   >> "$GITHUB_OUTPUT"
+            echo "run=yes"        >> "$GITHUB_OUTPUT"
+          elif [ "$HOUR" = "17" ]; then
+            echo "slot=afternoon" >> "$GITHUB_OUTPUT"
+            echo "run=yes"        >> "$GITHUB_OUTPUT"
+          else
+            echo "Off-hour trigger (DST duplicate), skipping."
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.slot.outputs.run == 'yes'
+        with:
+          python-version: "3.12"
+
+      - name: Send digest
+        if: steps.slot.outputs.run == 'yes'
+        env:
+          DIGEST_SLOT: ${{ steps.slot.outputs.slot }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          OPENAI_MODEL: gpt-4o-mini
+        run: python digest.py
