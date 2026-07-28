@@ -55,5 +55,5 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
-          LLM_MODEL: gemini-2.0-flash
+          # LLM_MODEL optional: if unset, digest.py tries current free Gemini models in order.
         run: python digest.py

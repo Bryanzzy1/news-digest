@@ -217,37 +217,58 @@ def build_prompt(items, slot, start_et, end_et):
     )
 
 
-def rank(items, slot, start_et, end_et):
-    """Rank + summarize via Google Gemini (free tier). Returns parsed JSON dict."""
-    key = os.environ["GEMINI_API_KEY"].strip()
-    prompt = SYSTEM + "\n\n" + build_prompt(items, slot, start_et, end_et)
+def _gemini_call(model, key, prompt):
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }).encode()
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
            f"?key={key}")
-    req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"})
-    for attempt in range(3):
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read())
+    text = data["candidates"][0]["content"]["parts"][0]["text"]
+    return json.loads(text)
+
+
+def rank(items, slot, start_et, end_et):
+    """Rank + summarize via Google Gemini (free tier). Returns parsed JSON dict.
+
+    Tries a list of current free models in order; a 429 (that model's free quota
+    is exhausted or unavailable) falls through to the next one. LLM_MODEL, if set,
+    is tried first.
+    """
+    key = os.environ["GEMINI_API_KEY"].strip()
+    prompt = SYSTEM + "\n\n" + build_prompt(items, slot, start_et, end_et)
+    models = [m for m in [os.environ.get("LLM_MODEL"),
+                          "gemini-2.5-flash", "gemini-2.5-flash-lite",
+                          "gemini-2.0-flash", "gemini-2.0-flash-lite",
+                          "gemini-flash-latest"] if m]
+    seen, ordered = set(), []
+    for m in models:  # dedupe, preserve order
+        if m not in seen:
+            seen.add(m)
+            ordered.append(m)
+
+    last = None
+    for model in ordered:
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                data = json.loads(r.read())
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return json.loads(text)
-        except urllib.error.HTTPError as e:  # surface Gemini's real error text
-            detail = e.read().decode(errors="replace")[:300]
-            print(f"  ! LLM attempt {attempt+1} failed: {e.code} {detail}", file=sys.stderr)
+            result = _gemini_call(model, key, prompt)
+            print(f"  ranked with {model}")
+            return result
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")
+            print(f"  ! {model}: {e.code} {detail[:400]}", file=sys.stderr)
+            last = e
             if e.code in (401, 403):
                 raise SystemExit(
                     "Gemini rejected the key (auth error). Check the GEMINI_API_KEY "
-                    "secret: no extra spaces, name is exactly GEMINI_API_KEY, key is "
-                    "active. Get one at https://aistudio.google.com/apikey") from e
-            time.sleep(2 * (attempt + 1))
+                    "secret and get a key at https://aistudio.google.com/apikey") from e
+            # 429 / 404 / 400 -> try the next model
         except Exception as e:  # noqa: BLE001
-            print(f"  ! LLM attempt {attempt+1} failed: {e}", file=sys.stderr)
-            time.sleep(2 * (attempt + 1))
-    raise SystemExit("LLM ranking failed after retries")
+            print(f"  ! {model}: {e}", file=sys.stderr)
+            last = e
+    raise SystemExit(f"All Gemini models failed. Last error: {last}")
 
 
 # ------------------------------- render + send -----------------------------
