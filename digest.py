@@ -24,7 +24,7 @@ ET_ZONE = ZoneInfo("America/New_York")
 UA = "Mozilla/5.0 (ai-news-digest; +https://github.com)"
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 MAX_ITEMS_TO_MODEL = 55          # cap sent to the model to keep tokens minimal
-DESC_CHARS = 180                 # truncate each description
+DESC_CHARS = 320                 # truncate each description (feeds the summary)
 
 
 # ------------------------------- window ------------------------------------
@@ -160,10 +160,14 @@ def build_prompt(items, slot, start_et, end_et):
         f"[index] title | source | description.\n\n"
         + "\n".join(lines)
         + "\n\nSelect and rank the most important, deduping near-identical stories. "
-        "Prioritize AI, agents, and ML; then broader tech. Return JSON:\n"
+        "Prioritize AI, agents, and ML; then broader tech. "
+        "For each, write a self-contained summary of 2-3 sentences so the reader "
+        "understands what happened and why it matters WITHOUT clicking anything. "
+        "Use only the given title/description plus your own knowledge; never invent "
+        "specifics you are unsure of. Return JSON:\n"
         '{"headline":"<=8-word overall vibe of the window",'
         '"items":[{"i":<index>,"cat":"<AI|Agents|ML|Tech>",'
-        '"why":"<=15 word reason it matters"}]}\n'
+        '"summary":"2-3 sentence self-contained summary"}]}\n'
         "Include at most 12 items. JSON only, no prose."
     )
 
@@ -204,12 +208,14 @@ def render(ranked, items, slot, start_et, end_et):
         cat = r.get("cat", "Tech")
         color = CAT_COLOR.get(cat, "#64748b")
         rows.append(f"""
-      <tr><td style="padding:14px 0;border-bottom:1px solid #eee;">
-        <span style="display:inline-block;min-width:22px;color:#94a3b8;font-weight:700;">{n}</span>
-        <span style="background:{color};color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;">{html.escape(cat)}</span>
-        <a href="{html.escape(it['link'])}" style="color:#0f172a;font-weight:600;text-decoration:none;font-size:16px;">{html.escape(it['title'])}</a>
-        <div style="color:#475569;font-size:13px;margin:4px 0 0 22px;">{html.escape(r.get('why',''))}</div>
-        <div style="color:#94a3b8;font-size:12px;margin-left:22px;">{html.escape(it['source'])}</div>
+      <tr><td style="padding:16px 0;border-bottom:1px solid #eee;">
+        <div style="margin-bottom:6px;">
+          <span style="display:inline-block;min-width:22px;color:#94a3b8;font-weight:700;">{n}</span>
+          <span style="background:{color};color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;">{html.escape(cat)}</span>
+          <span style="color:#94a3b8;font-size:12px;">{html.escape(it['source'])}</span>
+        </div>
+        <div style="color:#0f172a;font-weight:700;font-size:16px;margin-left:22px;">{html.escape(it['title'])}</div>
+        <div style="color:#334155;font-size:14px;line-height:1.55;margin:6px 0 0 22px;">{html.escape(r.get('summary',''))}</div>
       </td></tr>""")
     body = "".join(rows) or '<tr><td style="padding:24px;color:#64748b;">No new stories in this window.</td></tr>'
     return f"""<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
