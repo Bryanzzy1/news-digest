@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 
 ET_ZONE = ZoneInfo("America/New_York")
 UA = "Mozilla/5.0 (ai-news-digest; +https://github.com)"
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
 MAX_ITEMS_TO_MODEL = 60          # cap sent to the model to keep tokens minimal
 DESC_CHARS = 320                 # truncate each description (feeds the summary)
 HN_MIN_POINTS = 30               # floor so we cover HN broadly, not just front page
@@ -218,30 +218,31 @@ def build_prompt(items, slot, start_et, end_et):
 
 
 def rank(items, slot, start_et, end_et):
-    key = os.environ["OPENAI_API_KEY"].strip()
+    """Rank + summarize via Google Gemini (free tier). Returns parsed JSON dict."""
+    key = os.environ["GEMINI_API_KEY"].strip()
+    prompt = SYSTEM + "\n\n" + build_prompt(items, slot, start_et, end_et)
     body = json.dumps({
-        "model": MODEL,
-        "messages": [{"role": "system", "content": SYSTEM},
-                     {"role": "user", "content": build_prompt(items, slot, start_et, end_et)}],
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"},
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }).encode()
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+           f"?key={key}")
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions", data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+        url, data=body, headers={"Content-Type": "application/json"})
     for attempt in range(3):
         try:
             with urllib.request.urlopen(req, timeout=60) as r:
                 data = json.loads(r.read())
-            return json.loads(data["choices"][0]["message"]["content"])
-        except urllib.error.HTTPError as e:  # surface OpenAI's real error text
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            return json.loads(text)
+        except urllib.error.HTTPError as e:  # surface Gemini's real error text
             detail = e.read().decode(errors="replace")[:300]
             print(f"  ! LLM attempt {attempt+1} failed: {e.code} {detail}", file=sys.stderr)
             if e.code in (401, 403):
                 raise SystemExit(
-                    "OpenAI rejected the key (auth error). Check the OPENAI_API_KEY "
-                    "secret: no extra spaces, name is exactly OPENAI_API_KEY, key is "
-                    "active and has credit.") from e
+                    "Gemini rejected the key (auth error). Check the GEMINI_API_KEY "
+                    "secret: no extra spaces, name is exactly GEMINI_API_KEY, key is "
+                    "active. Get one at https://aistudio.google.com/apikey") from e
             time.sleep(2 * (attempt + 1))
         except Exception as e:  # noqa: BLE001
             print(f"  ! LLM attempt {attempt+1} failed: {e}", file=sys.stderr)
@@ -313,7 +314,7 @@ def send(subject, html_body):
 def preflight():
     """Print which env secrets arrived (lengths only, never values)."""
     print("env check (length, 0 = missing/empty):")
-    for name in ("OPENAI_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD", "MAIL_TO"):
+    for name in ("GEMINI_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD", "MAIL_TO"):
         v = os.environ.get(name, "")
         print(f"  {name}: len={len(v.strip())}")
 

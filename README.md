@@ -7,7 +7,7 @@ Two automated email digests a day, ranked by an LLM, near-zero cost.
 | Morning (flagship) | 9:00 AM | 5:00 PM prev day → 9:00 AM |
 | Afternoon | 5:00 PM | 9:00 AM → 5:00 PM |
 
-Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Algolia HN API, ranked by points, not just the front page). One `gpt-4o-mini` call ranks + writes a 2-3 sentence self-contained summary per story (no links, everything in the email body). Sends through your own Gmail (SMTP), so it arrives from you. DST handled automatically.
+Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Algolia HN API, ranked by points, not just the front page). One `gemini-2.0-flash` call (Google's free tier) ranks + writes a 2-3 sentence self-contained summary per story (no links, everything in the email body). Sends through your own Gmail (SMTP), so it arrives from you. DST handled automatically.
 
 ## Setup
 
@@ -19,7 +19,7 @@ Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Al
 
    | Secret | Value |
    |--------|-------|
-   | `OPENAI_API_KEY` | your OpenAI key |
+   | `GEMINI_API_KEY` | free key from <https://aistudio.google.com/apikey> (no card needed) |
    | `GMAIL_USER` | your full Gmail address (this is also the From address) |
    | `GMAIL_APP_PASSWORD` | the 16-char App Password from step 2 |
    | `MAIL_TO` | where to deliver, usually the same Gmail address |
@@ -35,7 +35,7 @@ Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Al
 ## Local test
 
 ```bash
-DIGEST_SLOT=morning OPENAI_API_KEY=... \
+DIGEST_SLOT=morning GEMINI_API_KEY=... \
   GMAIL_USER="you@gmail.com" GMAIL_APP_PASSWORD="abcd efgh ijkl mnop" \
   MAIL_TO="you@gmail.com" python digest.py
 ```

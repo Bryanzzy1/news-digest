@@ -51,9 +51,9 @@ jobs:
         if: steps.slot.outputs.run == 'yes'
         env:
           DIGEST_SLOT: ${{ steps.slot.outputs.slot }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
-          OPENAI_MODEL: gpt-4o-mini
+          LLM_MODEL: gemini-2.0-flash
         run: python digest.py
