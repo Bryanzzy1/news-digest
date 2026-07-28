@@ -15,6 +15,7 @@ import html
 import re
 import time
 import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree as ET
@@ -217,7 +218,7 @@ def build_prompt(items, slot, start_et, end_et):
 
 
 def rank(items, slot, start_et, end_et):
-    key = os.environ["OPENAI_API_KEY"]
+    key = os.environ["OPENAI_API_KEY"].strip()
     body = json.dumps({
         "model": MODEL,
         "messages": [{"role": "system", "content": SYSTEM},
@@ -233,6 +234,15 @@ def rank(items, slot, start_et, end_et):
             with urllib.request.urlopen(req, timeout=60) as r:
                 data = json.loads(r.read())
             return json.loads(data["choices"][0]["message"]["content"])
+        except urllib.error.HTTPError as e:  # surface OpenAI's real error text
+            detail = e.read().decode(errors="replace")[:300]
+            print(f"  ! LLM attempt {attempt+1} failed: {e.code} {detail}", file=sys.stderr)
+            if e.code in (401, 403):
+                raise SystemExit(
+                    "OpenAI rejected the key (auth error). Check the OPENAI_API_KEY "
+                    "secret: no extra spaces, name is exactly OPENAI_API_KEY, key is "
+                    "active and has credit.") from e
+            time.sleep(2 * (attempt + 1))
         except Exception as e:  # noqa: BLE001
             print(f"  ! LLM attempt {attempt+1} failed: {e}", file=sys.stderr)
             time.sleep(2 * (attempt + 1))
