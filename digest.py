@@ -315,20 +315,23 @@ def send(subject, html_body):
     """
     import smtplib
     from email.mime.text import MIMEText
+    from email.utils import formatdate, make_msgid, formataddr
 
-    user = os.environ["GMAIL_USER"]
+    user = os.environ["GMAIL_USER"].strip()
     pw = os.environ["GMAIL_APP_PASSWORD"].replace(" ", "")
-    to = os.environ.get("MAIL_TO", user)
+    to = os.environ.get("MAIL_TO", user).strip() or user
 
     msg = MIMEText(html_body, "html", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = user
+    msg["From"] = formataddr(("AI & Tech Digest", user))  # display name, not bare address
     msg["To"] = to
+    msg["Date"] = formatdate(localtime=True)               # dateless mail lands oddly/in spam
+    msg["Message-ID"] = make_msgid(domain=user.split("@")[-1])
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
         s.login(user, pw)
         s.sendmail(user, [to], msg.as_string())
-    print(f"  sent to {to}")
+    print(f"  sent to {to} (subject: {subject!r})")
 
 
 # ------------------------------- main --------------------------------------
