@@ -24,10 +24,11 @@ from zoneinfo import ZoneInfo
 ET_ZONE = ZoneInfo("America/New_York")
 UA = "Mozilla/5.0 (ai-news-digest; +https://github.com)"
 MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
-MAX_ITEMS_TO_MODEL = 60          # cap sent to the model to keep tokens minimal
+MAX_ITEMS_TO_MODEL = 80          # cap sent to the model to keep tokens minimal
 DESC_CHARS = 320                 # truncate each description (feeds the summary)
 HN_MIN_POINTS = 30               # floor so we cover HN broadly, not just front page
 HN_MAX_ITEMS = 40                # keep the top-scoring HN stories in the window
+HN_SECTION_ITEMS = 8             # how many HN discussions to show in their own section
 
 
 # ------------------------------- window ------------------------------------
@@ -154,6 +155,8 @@ def fetch_hn(start_utc, end_utc):
             "desc": f"Hacker News: {pts} points, {ncom} comments."[:DESC_CHARS],
             "date": datetime.fromtimestamp(h["created_at_i"], tz=timezone.utc),
             "source": "news.ycombinator.com",
+            "hn_points": pts,
+            "hn_comments": ncom,
         })
     print(f"  hacker news: {len(out)} stories in window (>= {HN_MIN_POINTS} pts)")
     return out
@@ -204,16 +207,18 @@ def build_prompt(items, slot, start_et, end_et):
         f"Below are {len(items)} candidate stories, one per line as "
         f"[index] title | source | description.\n\n"
         + "\n".join(lines)
-        + "\n\nSelect and rank the most important, deduping near-identical stories. "
+        + "\n\nSelect and rank the 10 most important, deduping near-identical stories. "
         "Prioritize AI, agents, and ML; then broader tech. "
-        "For each, write a self-contained summary of 2-3 sentences so the reader "
-        "understands what happened and why it matters WITHOUT clicking anything. "
+        "Stories from news.ycombinator.com are Hacker News discussions and ARE "
+        "eligible: include the most significant ones in the ranking too. "
+        "For each, write ONE tight sentence (max 30 words) capturing what happened "
+        "and why it matters, readable without clicking. "
         "Use only the given title/description plus your own knowledge; never invent "
         "specifics you are unsure of. Return JSON:\n"
         '{"headline":"<=8-word overall vibe of the window",'
         '"items":[{"i":<index>,"cat":"<AI|Agents|ML|Tech>",'
-        '"summary":"2-3 sentence self-contained summary"}]}\n'
-        "Include at most 12 items. JSON only, no prose."
+        '"summary":"one sentence, max 30 words"}]}\n'
+        "Return EXACTLY the top 10 items (fewer only if fewer exist). JSON only, no prose."
     )
 
 
@@ -276,7 +281,7 @@ def rank(items, slot, start_et, end_et):
 CAT_COLOR = {"AI": "#6366f1", "Agents": "#0ea5e9", "ML": "#8b5cf6", "Tech": "#64748b"}
 
 
-def render(ranked, items, slot, start_et, end_et):
+def render(ranked, items, hn, slot, start_et, end_et):
     label = "Morning digest" if slot == "morning" else "Afternoon digest"
     win = f"{start_et:%b %d, %I:%M %p} to {end_et:%b %d, %I:%M %p} ET"
     rows = []
@@ -295,6 +300,30 @@ def render(ranked, items, slot, start_et, end_et):
         <div style="color:#334155;font-size:14px;line-height:1.55;margin:6px 0 0 22px;">{html.escape(r.get('summary',''))}</div>
       </td></tr>""")
     body = "".join(rows) or '<tr><td style="padding:24px;color:#64748b;">No new stories in this window.</td></tr>'
+
+    # Dedicated Hacker News section: top N shown, the rest folded into an
+    # expandable <details> block (works in WebKit clients like Spark, Apple Mail).
+    def hn_row(n, it):
+        return (f'<tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">'
+                f'<span style="display:inline-block;min-width:22px;color:#f59e0b;font-weight:700;">{n}</span>'
+                f'<span style="color:#0f172a;font-weight:600;font-size:15px;">{html.escape(it["title"])}</span>'
+                f'<div style="color:#94a3b8;font-size:12px;margin-left:22px;">'
+                f'{it.get("hn_points",0)} points &middot; {it.get("hn_comments",0)} comments</div></td></tr>')
+
+    top_rows = "".join(hn_row(n, it) for n, it in enumerate(hn[:HN_SECTION_ITEMS], 1))
+    rest = hn[HN_SECTION_ITEMS:]
+    rest_rows = "".join(hn_row(n, it) for n, it in enumerate(rest, HN_SECTION_ITEMS + 1))
+    expand = (f"""
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;color:#f59e0b;font-size:13px;font-weight:600;">
+          Show all {len(hn)} Hacker News stories from this window</summary>
+        <table width="100%" cellpadding="0" cellspacing="0">{rest_rows}</table>
+      </details>""" if rest else "")
+    hn_section = (f"""
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#f59e0b;font-weight:700;margin-top:28px;">Top on Hacker News</div>
+      <table width="100%" cellpadding="0" cellspacing="0">{top_rows}</table>{expand}"""
+                  if hn else "")
+
     return f"""<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;padding:24px;">
     <div style="background:#fff;border-radius:14px;padding:28px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
@@ -302,13 +331,42 @@ def render(ranked, items, slot, start_et, end_et):
       <h1 style="margin:6px 0 2px;font-size:22px;color:#0f172a;">{html.escape(ranked.get('headline','AI &amp; Tech News'))}</h1>
       <div style="color:#94a3b8;font-size:13px;margin-bottom:8px;">{win}</div>
       <table width="100%" cellpadding="0" cellspacing="0">{body}</table>
+      {hn_section}
       <div style="color:#cbd5e1;font-size:11px;margin-top:20px;">Ranked by {MODEL} from {len(items)} stories across Hacker News and free RSS feeds.</div>
     </div>
   </div></body></html>"""
 
 
-def send(subject, html_body):
+def render_text(ranked, items, hn, slot, start_et, end_et):
+    """Plain-text version. Required so clients like Spark don't show a blank body."""
+    label = "Morning digest" if slot == "morning" else "Afternoon digest"
+    win = f"{start_et:%b %d, %I:%M %p} to {end_et:%b %d, %I:%M %p} ET"
+    lines = [label.upper(), ranked.get("headline", "AI & Tech News"), win, ""]
+    ranked_items = ranked.get("items", [])
+    if ranked_items:
+        for n, r in enumerate(ranked_items, 1):
+            it = items[r["i"]]
+            lines.append(f"{n}. [{r.get('cat','Tech')}] {it['title']}  ({it['source']})")
+            lines.append(f"   {r.get('summary','')}")
+            lines.append("")
+    else:
+        lines.append("No new stories in this window.")
+        lines.append("")
+    if hn:
+        lines.append(f"TOP ON HACKER NEWS ({len(hn)} stories this window)")
+        for n, it in enumerate(hn, 1):
+            lines.append(f"{n}. {it['title']}  "
+                         f"({it.get('hn_points',0)} pts, {it.get('hn_comments',0)} comments)")
+        lines.append("")
+    lines.append(f"Ranked by {MODEL} from {len(items)} stories across Hacker News and free RSS feeds.")
+    return "\n".join(lines)
+
+
+def send(subject, html_body, text_body):
     """Send via your own Gmail over SMTP (from you, to you).
+
+    Sends multipart/alternative (plain text + HTML). Some clients (e.g. Spark)
+    render a bare text/html body as blank, so the plain-text part is required.
 
     GMAIL_USER = your full Gmail address (this is also the From address).
     GMAIL_APP_PASSWORD = a 16-char Google App Password (NOT your login password).
@@ -316,18 +374,22 @@ def send(subject, html_body):
     """
     import smtplib
     from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
     from email.utils import formatdate, make_msgid, formataddr
 
     user = os.environ["GMAIL_USER"].strip()
     pw = os.environ["GMAIL_APP_PASSWORD"].replace(" ", "")
     to = os.environ.get("MAIL_TO", user).strip() or user
 
-    msg = MIMEText(html_body, "html", "utf-8")
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = formataddr(("AI & Tech Digest", user))  # display name, not bare address
     msg["To"] = to
     msg["Date"] = formatdate(localtime=True)               # dateless mail lands oddly/in spam
     msg["Message-ID"] = make_msgid(domain=user.split("@")[-1])
+    # order matters: last part is the client's preferred; HTML last.
+    msg.attach(MIMEText(text_body, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
         s.login(user, pw)
@@ -354,22 +416,30 @@ def main():
 
     items = collect(start_utc, end_utc)
     print(f"  collected {len(items)} items in window")
+
+    # Full HN list (all in window) for its own section, before the model cap.
+    hn = sorted((it for it in items if it["source"] == "news.ycombinator.com"),
+                key=lambda it: it.get("hn_points", 0), reverse=True)
+
     if len(items) > MAX_ITEMS_TO_MODEL:
         items = items[:MAX_ITEMS_TO_MODEL]
 
     label = "Morning" if slot == "morning" else "Afternoon"
     if not items:
-        html_body = render({"headline": "Quiet window", "items": []}, [], slot, start_et, end_et)
-        send(f"[{label}] AI & Tech digest - nothing new", html_body)
+        empty = {"headline": "Quiet window", "items": []}
+        send(f"[{label}] AI & Tech digest - nothing new",
+             render(empty, [], [], slot, start_et, end_et),
+             render_text(empty, [], [], slot, start_et, end_et))
         return
 
     ranked = rank(items, slot, start_et, end_et)
     # guard indexes
     ranked["items"] = [r for r in ranked.get("items", [])
                        if isinstance(r.get("i"), int) and 0 <= r["i"] < len(items)]
-    html_body = render(ranked, items, slot, start_et, end_et)
+    html_body = render(ranked, items, hn, slot, start_et, end_et)
+    text_body = render_text(ranked, items, hn, slot, start_et, end_et)
     top = ranked.get("headline", "AI & Tech digest")
-    send(f"[{label}] {top}", html_body)
+    send(f"[{label}] {top}", html_body, text_body)
 
 
 if __name__ == "__main__":
