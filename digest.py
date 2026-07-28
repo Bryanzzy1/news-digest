@@ -23,8 +23,10 @@ from zoneinfo import ZoneInfo
 ET_ZONE = ZoneInfo("America/New_York")
 UA = "Mozilla/5.0 (ai-news-digest; +https://github.com)"
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-MAX_ITEMS_TO_MODEL = 55          # cap sent to the model to keep tokens minimal
+MAX_ITEMS_TO_MODEL = 60          # cap sent to the model to keep tokens minimal
 DESC_CHARS = 320                 # truncate each description (feeds the summary)
+HN_MIN_POINTS = 30               # floor so we cover HN broadly, not just front page
+HN_MAX_ITEMS = 40                # keep the top-scoring HN stories in the window
 
 
 # ------------------------------- window ------------------------------------
@@ -119,8 +121,50 @@ def host_of(url):
     return (m.group(1).replace("www.", "") if m else url)
 
 
+def fetch_hn(start_utc, end_utc):
+    """Every Hacker News story in the window via the Algolia API, ranked by points.
+
+    Uses numericFilters on created_at_i (unix seconds) so the window is exact,
+    then keeps the top HN_MAX_ITEMS by points. Covers all of HN, not just the
+    front page. HN 'title' is the story headline; description is empty (HN links
+    out), so we tag the source as news.ycombinator.com and let the LLM summarize
+    from the title plus its own knowledge.
+    """
+    start_i, end_i = int(start_utc.timestamp()), int(end_utc.timestamp())
+    url = ("https://hn.algolia.com/api/v1/search_by_date?tags=story"
+           f"&numericFilters=created_at_i>{start_i},created_at_i<{end_i},"
+           f"points>={HN_MIN_POINTS}&hitsPerPage=200")
+    try:
+        data = json.loads(fetch(url))
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! skip hacker news: {e}", file=sys.stderr)
+        return []
+    hits = sorted(data.get("hits", []),
+                  key=lambda h: h.get("points") or 0, reverse=True)[:HN_MAX_ITEMS]
+    out = []
+    for h in hits:
+        title = h.get("title")
+        if not title:
+            continue
+        pts, ncom = h.get("points") or 0, h.get("num_comments") or 0
+        out.append({
+            "title": strip_tags(title),
+            "link": h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}",
+            "desc": f"Hacker News: {pts} points, {ncom} comments."[:DESC_CHARS],
+            "date": datetime.fromtimestamp(h["created_at_i"], tz=timezone.utc),
+            "source": "news.ycombinator.com",
+        })
+    print(f"  hacker news: {len(out)} stories in window (>= {HN_MIN_POINTS} pts)")
+    return out
+
+
 def collect(start_utc, end_utc):
     seen, out = set(), []
+    for it in fetch_hn(start_utc, end_utc):
+        key = it["title"].lower()[:80]
+        if key not in seen:
+            seen.add(key)
+            out.append(it)
     for feed in load_feeds():
         host = host_of(feed)
         try:

@@ -7,7 +7,7 @@ Two automated email digests a day, ranked by an LLM, near-zero cost.
 | Morning (flagship) | 9:00 AM | 5:00 PM prev day → 9:00 AM |
 | Afternoon | 5:00 PM | 9:00 AM → 5:00 PM |
 
-Free RSS in, one `gpt-4o-mini` call ranks + explains, Resend sends the HTML email. DST handled automatically.
+Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Algolia HN API, ranked by points, not just the front page). One `gpt-4o-mini` call ranks + writes a 2-3 sentence self-contained summary per story (no links, everything in the email body). Resend sends the HTML email. DST handled automatically.
 
 ## Setup
 

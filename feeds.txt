@@ -12,4 +12,5 @@ https://www.theverge.com/rss/index.xml
 https://arstechnica.com/feed/
 https://feeds.arstechnica.com/arstechnica/technology-lab
 https://www.wired.com/feed/category/business/latest/rss
-https://hnrss.org/frontpage?points=150
+# Hacker News is pulled separately via the Algolia API (see fetch_hn in digest.py),
+# which returns EVERY story in the time window by points, not just the front page.
