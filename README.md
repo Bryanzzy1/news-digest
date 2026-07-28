@@ -7,20 +7,22 @@ Two automated email digests a day, ranked by an LLM, near-zero cost.
 | Morning (flagship) | 9:00 AM | 5:00 PM prev day → 9:00 AM |
 | Afternoon | 5:00 PM | 9:00 AM → 5:00 PM |
 
-Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Algolia HN API, ranked by points, not just the front page). One `gpt-4o-mini` call ranks + writes a 2-3 sentence self-contained summary per story (no links, everything in the email body). Resend sends the HTML email. DST handled automatically.
+Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Algolia HN API, ranked by points, not just the front page). One `gpt-4o-mini` call ranks + writes a 2-3 sentence self-contained summary per story (no links, everything in the email body). Sends through your own Gmail (SMTP), so it arrives from you. DST handled automatically.
 
 ## Setup
 
 1. **Create the repo** and push these files.
-2. **Resend**: sign up, verify a domain (or use `onboarding@resend.dev` for the `from` while testing), grab an API key.
+2. **Gmail App Password** (sends from your own Gmail, arrives from you):
+   - Turn on 2-Step Verification: <https://myaccount.google.com/security>
+   - Create an App Password: <https://myaccount.google.com/apppasswords> (name it "news-digest"). Google gives you a 16-char code.
 3. **Add repo secrets** (Settings → Secrets and variables → Actions):
 
    | Secret | Value |
    |--------|-------|
    | `OPENAI_API_KEY` | your OpenAI key |
-   | `RESEND_API_KEY` | your Resend key |
-   | `MAIL_FROM` | e.g. `News <digest@yourdomain.com>` or `onboarding@resend.dev` |
-   | `MAIL_TO` | your inbox |
+   | `GMAIL_USER` | your full Gmail address (this is also the From address) |
+   | `GMAIL_APP_PASSWORD` | the 16-char App Password from step 2 |
+   | `MAIL_TO` | where to deliver, usually the same Gmail address |
 
 4. **Test now**: Actions tab → `news-digest` → Run workflow → pick `morning`.
 
@@ -33,6 +35,7 @@ Sources: 11 free RSS feeds **plus all of Hacker News** in the window (via the Al
 ## Local test
 
 ```bash
-DIGEST_SLOT=morning OPENAI_API_KEY=... RESEND_API_KEY=... \
-  MAIL_FROM="onboarding@resend.dev" MAIL_TO="you@example.com" python digest.py
+DIGEST_SLOT=morning OPENAI_API_KEY=... \
+  GMAIL_USER="you@gmail.com" GMAIL_APP_PASSWORD="abcd efgh ijkl mnop" \
+  MAIL_TO="you@gmail.com" python digest.py
 ```

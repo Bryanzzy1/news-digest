@@ -269,24 +269,34 @@ def render(ranked, items, slot, start_et, end_et):
       <h1 style="margin:6px 0 2px;font-size:22px;color:#0f172a;">{html.escape(ranked.get('headline','AI &amp; Tech News'))}</h1>
       <div style="color:#94a3b8;font-size:13px;margin-bottom:8px;">{win}</div>
       <table width="100%" cellpadding="0" cellspacing="0">{body}</table>
-      <div style="color:#cbd5e1;font-size:11px;margin-top:20px;">Ranked by {MODEL} from {len(items)} stories across free RSS feeds.</div>
+      <div style="color:#cbd5e1;font-size:11px;margin-top:20px;">Ranked by {MODEL} from {len(items)} stories across Hacker News and free RSS feeds.</div>
     </div>
   </div></body></html>"""
 
 
 def send(subject, html_body):
-    key = os.environ["RESEND_API_KEY"]
-    body = json.dumps({
-        "from": os.environ["MAIL_FROM"],        # e.g. "News <digest@yourdomain.com>" or onboarding@resend.dev
-        "to": [os.environ["MAIL_TO"]],
-        "subject": subject,
-        "html": html_body,
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.resend.com/emails", data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        print("  sent:", r.status, r.read().decode()[:200])
+    """Send via your own Gmail over SMTP (from you, to you).
+
+    GMAIL_USER = your full Gmail address (this is also the From address).
+    GMAIL_APP_PASSWORD = a 16-char Google App Password (NOT your login password).
+    MAIL_TO = where to deliver (usually the same Gmail address).
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+
+    user = os.environ["GMAIL_USER"]
+    pw = os.environ["GMAIL_APP_PASSWORD"].replace(" ", "")
+    to = os.environ.get("MAIL_TO", user)
+
+    msg = MIMEText(html_body, "html", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = user
+    msg["To"] = to
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
+        s.login(user, pw)
+        s.sendmail(user, [to], msg.as_string())
+    print(f"  sent to {to}")
 
 
 # ------------------------------- main --------------------------------------

@@ -52,8 +52,8 @@ jobs:
         env:
           DIGEST_SLOT: ${{ steps.slot.outputs.slot }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
           OPENAI_MODEL: gpt-4o-mini
         run: python digest.py
