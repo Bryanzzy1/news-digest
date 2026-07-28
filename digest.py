@@ -240,10 +240,11 @@ def rank(items, slot, start_et, end_et):
     """
     key = os.environ["GEMINI_API_KEY"].strip()
     prompt = SYSTEM + "\n\n" + build_prompt(items, slot, start_et, end_et)
+    # gemini-flash-latest is the one with free quota on this account; try it first.
+    # Others are fallbacks in case Google rotates model names again.
     models = [m for m in [os.environ.get("LLM_MODEL"),
-                          "gemini-2.5-flash", "gemini-2.5-flash-lite",
-                          "gemini-2.0-flash", "gemini-2.0-flash-lite",
-                          "gemini-flash-latest"] if m]
+                          "gemini-flash-latest", "gemini-flash-lite-latest",
+                          "gemini-2.0-flash", "gemini-2.0-flash-lite"] if m]
     seen, ordered = set(), []
     for m in models:  # dedupe, preserve order
         if m not in seen:
