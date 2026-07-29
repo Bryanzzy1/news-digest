@@ -1,14 +1,16 @@
 name: news-digest
 
-# Cron is UTC. We fire at both EST and EDT offsets for 9AM and 5PM ET,
-# then a guard step checks the REAL Eastern hour so only the right run
-# proceeds. This makes daylight-saving fully automatic.
+# We schedule each ET time at BOTH its EDT and EST UTC hour. The guard below
+# keys off WHICH cron triggered the run (github.event.schedule) -- fixed no
+# matter how late GitHub actually runs it -- and uses the current DST offset
+# only to pick which of the two duplicate crons is "live" today. GitHub often
+# delays scheduled runs by 1-2h, so we must NOT decide by wall-clock time.
 on:
   schedule:
-    - cron: "0 13 * * *"   # 9AM EDT (summer)
-    - cron: "0 14 * * *"   # 9AM EST (winter)
-    - cron: "0 21 * * *"   # 5PM EDT (summer)
-    - cron: "0 22 * * *"   # 5PM EST (winter)
+    - cron: "0 13 * * *"   # 9AM ET when EDT (summer)
+    - cron: "0 14 * * *"   # 9AM ET when EST (winter)
+    - cron: "0 21 * * *"   # 5PM ET when EDT (summer)
+    - cron: "0 22 * * *"   # 5PM ET when EST (winter)
   workflow_dispatch:        # manual test button
     inputs:
       slot:
@@ -23,22 +25,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve Eastern hour and slot
+      - name: Resolve slot from the triggering cron
         id: slot
+        env:
+          CRON: ${{ github.event.schedule }}
+          MANUAL: ${{ github.event.inputs.slot }}
         run: |
-          HOUR=$(TZ=America/New_York date +%H)
-          echo "Eastern hour: $HOUR"
-          if [ -n "${{ github.event.inputs.slot }}" ]; then
-            echo "slot=${{ github.event.inputs.slot }}" >> "$GITHUB_OUTPUT"
-            echo "run=yes" >> "$GITHUB_OUTPUT"
-          elif [ "$HOUR" = "09" ]; then
-            echo "slot=morning"   >> "$GITHUB_OUTPUT"
-            echo "run=yes"        >> "$GITHUB_OUTPUT"
-          elif [ "$HOUR" = "17" ]; then
-            echo "slot=afternoon" >> "$GITHUB_OUTPUT"
-            echo "run=yes"        >> "$GITHUB_OUTPUT"
+          # Current ET offset: -0400 = EDT (summer), -0500 = EST (winter)
+          OFF=$(TZ=America/New_York date +%z)
+          echo "cron='$CRON' manual='$MANUAL' et_offset=$OFF"
+          if [ -n "$MANUAL" ]; then
+            echo "slot=$MANUAL" >> "$GITHUB_OUTPUT"; echo "run=yes" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$OFF" = "-0400" ]; then MORN="0 13 * * *"; AFT="0 21 * * *";   # EDT
+          else                          MORN="0 14 * * *"; AFT="0 22 * * *"; fi # EST
+          if [ "$CRON" = "$MORN" ]; then
+            echo "slot=morning"   >> "$GITHUB_OUTPUT"; echo "run=yes" >> "$GITHUB_OUTPUT"
+          elif [ "$CRON" = "$AFT" ]; then
+            echo "slot=afternoon" >> "$GITHUB_OUTPUT"; echo "run=yes" >> "$GITHUB_OUTPUT"
           else
-            echo "Off-hour trigger (DST duplicate), skipping."
+            echo "Cron is the other DST offset's duplicate, skipping."
             echo "run=no" >> "$GITHUB_OUTPUT"
           fi
 
